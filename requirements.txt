@@ -1,0 +1,7 @@
+firebase_admin
+yt_dlp
+python-dotenv
+flask
+pygame
+serial
+scipy
