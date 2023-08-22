@@ -26,6 +26,9 @@ def read_and_process_music(music_file):
     frequencies, times, Zxx = signal.stft(data, fs=sample_rate, nperseg=sample_rate//5, noverlap=sample_rate//10)
     mask = (frequencies > FREQUENCY_MIN) & (frequencies < FREQUENCY_MAX)
     frequencies = frequencies[mask]
+    # apply butterworth filter -- Experimental -- Not sure if this is necessary
+    b, a = butter(3, 0.05)
+    Zxx = filtfilt(b, a, Zxx, axis=0)
     Zxx = Zxx[mask, :]
     # Take absolute value to get magnitude (power)
     Zxx = np.abs(Zxx)
