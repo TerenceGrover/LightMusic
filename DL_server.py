@@ -7,13 +7,11 @@ from flask import Flask, jsonify
 config = dotenv_values(".env")
 firebase_url = config['FIREBASE_DB']
 
-# Initialize Firebase
 cred = credentials.Certificate('access_key.json')
 firebase_admin.initialize_app(cred, {
     'databaseURL': firebase_url
 })
 
-# Reference to the queue in Firebase Realtime Database
 ref = db.reference('queue')
 
 def download_and_convert_to_wav(url, output_name):
@@ -32,6 +30,7 @@ def download_and_convert_to_wav(url, output_name):
 def download_oldest():
     # Get all items in the queue
     queue_data = ref.get()
+    filename = None
 
     if queue_data:
         # Sort the items based on timestamps
@@ -40,17 +39,27 @@ def download_oldest():
         # Download the oldest URL
         key, value = sorted_items[0]
         youtube_url = value.get('youtubeId')
+        filename = value.get('timestamps')
         if youtube_url:
-            download_and_convert_to_wav(youtube_url, f"output_{key}")
+            # Put it in a folder called output and call it by number based on the timestamp
+            download_and_convert_to_wav(youtube_url, f'output/{filename}')
             # Remove the URL from the queue
             ref.child(key).delete()
+        return filename
+    else:
+        return None
 
 app = Flask(__name__)
 
 @app.route('/download_next', methods=['GET'])
 def download_next():
-    download_oldest()
-    return jsonify({'status': 'success'})
+    filename = download_oldest()
+    if filename is None:
+        # Set status code to 400
+        return jsonify({'status': 'error',
+                        'message': 'No songs in queue.'}), 400
+    return jsonify({'status': 'success',
+                    'filename': filename}), 200
 
 if __name__ == '__main__':
     app.run(debug=True)

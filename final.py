@@ -6,9 +6,10 @@ import serial
 import time
 from scipy.signal import butter, filtfilt
 import threading
+import requests
 
-MUSIC_FILE = 'igloo.wav'
-SERIAL_PORT = '/dev/cu.usbmodem1301'
+global filename;
+SERIAL_PORT = '/dev/cu.usbmodem1101'
 SERIAL_BAUDRATE = 115200
 NUM_BINS = 5
 FREQUENCY_MIN = 25
@@ -16,6 +17,7 @@ FREQUENCY_MAX = 8000
 SLEEP_BEFORE_PLAY = 0.12
 SLEEP_BETWEEN_SENDS = 0.096
 NUM_LEVELS = 13
+SERVER_URL = 'http://127.0.0.1:5000/download_next'
 
 def read_and_process_music(music_file):
     # Read the wav file
@@ -48,31 +50,52 @@ def read_and_process_music(music_file):
     bin_vols_over_time = np.round(bin_vols_over_time * (NUM_LEVELS - 1)).astype(int)
     return bin_vols_over_time
 
+def download_and_update_song():
+    global filename
+    response = requests.get(SERVER_URL)
+    if response.status_code == 200:
+        json_data = response.json()
+        if json_data.get('status') == 'success':
+            print("Successfully downloaded next song.")
+            # Update your MUSIC_FILE variable with the new filename.
+            filename = f'./output/{json_data.get("filename")}.wav'
+            # Assuming you know the pattern of the filename or it can be parsed from the response
+            return True  # return True if successful
+    print("Failed to download next song.")
+    # Add a 3s delay before trying again
+    time.sleep(3)
+    return False  # return False if unsuccessful
+
 # Create a serial object
 ser = serial.Serial(SERIAL_PORT, 115200)
-# Initialize the mixer module
-pygame.mixer.init()
-# Load the music file
-pygame.mixer.music.load(MUSIC_FILE)
-# Wait for connection to establish
-time.sleep(1)
+
 # Start threads to launch the music slightly after the serial connection is established
 def play_music():
     time.sleep(SLEEP_BEFORE_PLAY)
     pygame.mixer.music.play()
-print("Starting music")
-threading.Thread(target=play_music).start()
-print("Music started")
 
-bin_vols_over_time = read_and_process_music(MUSIC_FILE)
+while True:  # Loop to keep playing songs indefinitely
+    # Try to download the next song and update MUSIC_FILE if successful
+    if download_and_update_song():
+        # Initialize the mixer module
+        pygame.mixer.init()
+        # Load the music file
+        pygame.mixer.music.load(filename)
+        # Wait for connection to establish
+        time.sleep(1)
 
-# Assuming your data is stored in bin_vols_over_time
-for t in range(bin_vols_over_time.shape[0]):
-    data = bin_vols_over_time[t]
-    data_string = ",".join(map(str, data)) + "\n"
-    ser.write(data_string.encode())
-    # Wait for a tenth of a second before sending the next data
-    time.sleep(SLEEP_BETWEEN_SENDS)
+        # Start threads to launch the music slightly after the serial connection is established
+        print("Starting music")
+        threading.Thread(target=play_music).start()
+        print("Music started")
 
-# Close the serial connection
-ser.close()
+        bin_vols_over_time = read_and_process_music(filename)
+
+        for t in range(bin_vols_over_time.shape[0]):
+            data = bin_vols_over_time[t]
+            data_string = ",".join(map(str, data)) + "\n"
+            ser.write(data_string.encode())
+            time.sleep(SLEEP_BETWEEN_SENDS)
+
+        # Close the serial connection
+        ser.close()
